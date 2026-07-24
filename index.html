@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Statistiche libreria</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: transparent;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .card {
+    background: #f7f6f3;
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid rgba(0,0,0,0.08);
+  }
+  .label {
+    font-size: 13px;
+    color: #6b6b6b;
+    margin-bottom: 6px;
+  }
+  .value {
+    font-size: 24px;
+    font-weight: 600;
+    color: #37352f;
+  }
+  .updated {
+    font-size: 11px;
+    color: #9b9a97;
+    margin-top: 10px;
+    text-align: right;
+  }
+  .error {
+    color: #eb5757;
+    font-size: 13px;
+  }
+  @media (max-width: 600px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="grid" id="cards">
+  <div class="card"><div class="label">Libri letti</div><div class="value">…</div></div>
+  <div class="card"><div class="label">Pagine anno</div><div class="value">…</div></div>
+  <div class="card"><div class="label">Articoli</div><div class="value">…</div></div>
+  <div class="card"><div class="label">Voto medio</div><div class="value">…</div></div>
+</div>
+<div class="updated" id="updated"></div>
+
+<script>
+  // Sostituisci con l'URL del tuo worker Cloudflare una volta creato
+  // (es: https://libreria-stats.tuonome.workers.dev)
+  const WORKER_URL = "https://f9976226.libreria-stats.pages.dev";
+
+  async function loadStats() {
+    try {
+      const res = await fetch(WORKER_URL);
+      const data = await res.json();
+
+      if (data.error) throw new Error(data.error);
+
+      const cards = document.querySelectorAll("#cards .card .value");
+      cards[0].textContent = data.libriLetti;
+      cards[1].textContent = data.pagineAnno.toLocaleString("it-IT");
+      cards[2].textContent = data.articoliTotali;
+      cards[3].textContent = data.votoMedio + " / 5";
+
+      const updatedEl = document.getElementById("updated");
+      const d = new Date(data.aggiornato);
+      updatedEl.textContent = "Aggiornato: " + d.toLocaleString("it-IT");
+    } catch (err) {
+      document.getElementById("cards").innerHTML =
+        '<div class="error">Errore nel caricamento: ' + err.message + "</div>";
+    }
+  }
+
+  loadStats();
+  // Ricarica ogni volta che la pagina viene aperta/ricaricata da Notion.
+  // Se vuoi un refresh automatico periodico, decommenta la riga sotto:
+  // setInterval(loadStats, 5 * 60 * 1000); // ogni 5 minuti
+</script>
+
+</body>
+</html>
