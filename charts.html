@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Statistiche di lettura</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: transparent;
+  }
+  .panel {
+    background: #edf1f2;
+    border-radius: 12px;
+    padding: 20px 24px;
+    min-height: 260px;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .header h3 {
+    margin: 0;
+    font-size: 15px;
+    color: #37352f;
+  }
+  .switch-btn {
+    background: #fff;
+    border: 1px solid rgba(0,0,0,0.1);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #37352f;
+    cursor: pointer;
+  }
+  .switch-btn:hover { background: #f7f6f3; }
+  .chart-area {
+    position: relative;
+    height: 240px;
+  }
+  .empty, .error {
+    text-align: center;
+    color: #6b6b6b;
+    font-size: 13px;
+    padding: 60px 0;
+  }
+
+  /* Heatmap */
+  .heatmap {
+    display: grid;
+    grid-template-columns: repeat(30, 1fr);
+    gap: 3px;
+  }
+  .heatmap .cell {
+    aspect-ratio: 1;
+    border-radius: 2px;
+    background: #dfe3e4;
+  }
+  .heatmap-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #9b9a97;
+    margin-top: 10px;
+    justify-content: flex-end;
+  }
+  .heatmap-legend .cell { width: 10px; height: 10px; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <div class="header">
+    <h3 id="chart-title">Caricamento…</h3>
+    <button class="switch-btn" id="switch-btn" onclick="nextView()">Cambia vista →</button>
+  </div>
+  <div class="chart-area" id="chart-area">
+    <div class="empty">Caricamento dati…</div>
+  </div>
+</div>
+
+<script>
+  const WORKER_URL = "https://libreria-charts.daniele-470.workers.dev";
+
+  const VIEWS = [
+    { key: "monthly", label: "Letture per mese" },
+    { key: "genre", label: "Distribuzione per genere" },
+    { key: "cumulativePages", label: "Pagine lette (cumulativo)" },
+    { key: "heatmap", label: "Calendario letture" },
+  ];
+
+  let data = null;
+  let viewIndex = 0;
+  let chartInstance = null;
+
+  async function load() {
+    try {
+      const res = await fetch(WORKER_URL);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      data = json;
+      render();
+    } catch (err) {
+      document.getElementById("chart-area").innerHTML =
+        '<div class="error">Errore nel caricamento: ' + err.message + "</div>";
+    }
+  }
+
+  function nextView() {
+    viewIndex = (viewIndex + 1) % VIEWS.length;
+    render();
+  }
+
+  function render() {
+    const view = VIEWS[viewIndex];
+    document.getElementById("chart-title").textContent = view.label;
+
+    const area = document.getElementById("chart-area");
+    if (chartInstance) {
+      chartInstance.destroy();
+      chartInstance = null;
+    }
+    area.innerHTML = '<canvas id="canvas" style="display:none"></canvas>';
+
+    if (view.key === "monthly") renderMonthly();
+    else if (view.key === "genre") renderGenre();
+    else if (view.key === "cumulativePages") renderCumulative();
+    else if (view.key === "heatmap") renderHeatmap();
+  }
+
+  function ensureCanvas() {
+    const area = document.getElementById("chart-area");
+    area.innerHTML = '<canvas id="canvas"></canvas>';
+    return document.getElementById("canvas").getContext("2d");
+  }
+
+  function renderMonthly() {
+    const ctx = ensureCanvas();
+    const labels = data.monthly.map((m) => formatMonth(m.month));
+    const values = data.monthly.map((m) => m.count);
+    chartInstance = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{ data: values, backgroundColor: "#c0392b", borderRadius: 4 }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      },
+    });
+  }
+
+  function renderGenre() {
+    if (!data.genre || data.genre.length === 0) {
+      document.getElementById("chart-area").innerHTML = '<div class="empty">Nessun dato disponibile</div>';
+      return;
+    }
+    const ctx = ensureCanvas();
+    const palette = ["#c0392b","#e67e22","#2c8f6a","#2980b9","#8e44ad","#d4a017","#16a085","#7f8c8d"];
+    chartInstance = new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels: data.genre.map((g) => g.name),
+        datasets: [{ data: data.genre.map((g) => g.count), backgroundColor: palette }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "right", labels: { boxWidth: 12, font: { size: 11 } } } },
+      },
+    });
+  }
+
+  function renderCumulative() {
+    const ctx = ensureCanvas();
+    chartInstance = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: data.cumulativePages.map((p) => p.date),
+        datasets: [{
+          data: data.cumulativePages.map((p) => p.cumulative),
+          borderColor: "#c0392b",
+          backgroundColor: "rgba(192,57,43,0.1)",
+          fill: true,
+          tension: 0.25,
+          pointRadius: 0,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: { maxTicksLimit: 6 } }, y: { beginAtZero: true } },
+      },
+    });
+  }
+
+  function renderHeatmap() {
+    const area = document.getElementById("chart-area");
+    const map = {};
+    data.heatmap.forEach((d) => { map[d.date] = d.count; });
+
+    const days = [];
+    const today = new Date();
+    for (let i = 364; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      days.push(d.toISOString().slice(0, 10));
+    }
+
+    const maxCount = Math.max(1, ...Object.values(map));
+    const colorFor = (n) => {
+      if (!n) return "#dfe3e4";
+      const ratio = Math.min(1, n / maxCount);
+      const alpha = 0.25 + ratio * 0.75;
+      return "rgba(192,57,43," + alpha.toFixed(2) + ")";
+    };
+
+    const cellsHtml = days
+      .map((day) => '<div class="cell" title="' + day + ": " + (map[day] || 0) + '" style="background:' + colorFor(map[day]) + '"></div>')
+      .join("");
+
+    area.innerHTML =
+      '<div class="heatmap">' + cellsHtml + "</div>" +
+      '<div class="heatmap-legend">meno' +
+        '<div class="cell" style="background:#dfe3e4"></div>' +
+        '<div class="cell" style="background:rgba(192,57,43,0.4)"></div>' +
+        '<div class="cell" style="background:rgba(192,57,43,0.7)"></div>' +
+        '<div class="cell" style="background:rgba(192,57,43,1)"></div>' +
+      "più</div>";
+  }
+
+  function formatMonth(key) {
+    const [y, m] = key.split("-");
+    const names = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
+    return names[parseInt(m, 10) - 1] + " " + y.slice(2);
+  }
+
+  load();
+</script>
+
+</body>
+</html>
