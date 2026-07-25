@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Statistiche di lettura</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: transparent;
+  }
+  .panel {
+    background: #edf1f2;
+    border-radius: 14px;
+    padding: 22px 26px;
+    min-height: 260px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 14px;
+    gap: 12px;
+  }
+  .header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: #37352f;
+    letter-spacing: -0.01em;
+  }
+  .header-controls {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .switch-btn {
+    background: #37352f;
+    border: none;
+    border-radius: 7px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    cursor: pointer;
+  }
+  .switch-btn:hover { opacity: 0.85; }
+  .year-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .year-btn {
+    background: #fff;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #37352f;
+    cursor: pointer;
+    text-align: center;
+  }
+  .year-btn.active {
+    background: #c0392b;
+    color: #fff;
+    border-color: #c0392b;
+  }
+  .year-btn:hover:not(.active) { background: #f7f6f3; }
+  .chart-area {
+    position: relative;
+    height: 240px;
+  }
+  .empty, .error {
+    text-align: center;
+    color: #6b6b6b;
+    font-size: 13px;
+    padding: 60px 0;
+  }
+
+  /* Heatmap stile GitHub */
+  .heatmap-scroll {
+    overflow-x: auto;
+    padding-bottom: 6px;
+  }
+  .heatmap-inner {
+    display: inline-block;
+    min-width: 100%;
+  }
+  .month-row {
+    position: relative;
+    height: 16px;
+    margin-left: 26px;
+    font-size: 11px;
+    color: #9b9a97;
+    font-weight: 600;
+  }
+  .month-row span {
+    position: absolute;
+    top: 0;
+    white-space: nowrap;
+  }
+  .heatmap-body {
+    display: flex;
+    gap: 4px;
+  }
+  .day-labels {
+    display: grid;
+    grid-template-rows: repeat(7, 12px);
+    gap: 3px;
+    font-size: 10px;
+    color: #9b9a97;
+    width: 22px;
+  }
+  .weeks {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 12px;
+    gap: 3px;
+  }
+  .week-col {
+    display: grid;
+    grid-template-rows: repeat(7, 12px);
+    gap: 3px;
+  }
+  .cell {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    background: #dfe3e4;
+  }
+  .cell.empty-cell { background: transparent; }
+  .heatmap-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #9b9a97;
+    margin-top: 12px;
+    margin-left: 26px;
+    justify-content: flex-start;
+  }
+  .heatmap-legend .cell { width: 10px; height: 10px; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <div class="header">
+    <h3 id="chart-title">Caricamento…</h3>
+    <div class="header-controls" id="header-controls">
+      <button class="switch-btn" onclick="nextView()">Cambia vista →</button>
+    </div>
+  </div>
+  <div class="chart-area" id="chart-area">
+    <div class="empty">Caricamento dati…</div>
+  </div>
+</div>
+
+<script>
+  const WORKER_URL = "https://libreria-charts.daniele-470.workers.dev";
+
+  const VIEWS = [
+    { key: "monthly", label: "Letture per mese" },
+    { key: "genre", label: "Distribuzione per genere" },
+    { key: "cumulativePages", label: "Pagine lette (cumulativo)" },
+    { key: "heatmap", label: "Calendario letture" },
+  ];
+
+  let data = null;
+  let viewIndex = 0;
+  let chartInstance = null;
+  let heatmapYear = new Date().getFullYear();
+
+  // Modernizzazione impostazioni globali Chart.js
+  if (typeof Chart !== "undefined") {
+    Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
+    Chart.defaults.color = "#6b6b6b";
+    Chart.defaults.plugins.tooltip.backgroundColor = "#37352f";
+    Chart.defaults.plugins.tooltip.padding = 10;
+    Chart.defaults.plugins.tooltip.cornerRadius = 6;
+    Chart.defaults.plugins.tooltip.titleFont = { weight: "600" };
+  }
+
+  async function load() {
+    try {
+      const res = await fetch(WORKER_URL);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      data = json;
+      render();
+    } catch (err) {
+      document.getElementById("chart-area").innerHTML =
+        '<div class="error">Errore nel caricamento: ' + err.message + "</div>";
+    }
+  }
+
+  function nextView() {
+    viewIndex = (viewIndex + 1) % VIEWS.length;
+    render();
+  }
+
+  function selectYear(y) {
+    heatmapYear = y;
+    render();
+  }
+
+  function render() {
+    const view = VIEWS[viewIndex];
+    document.getElementById("chart-title").textContent = view.label;
+
+    // Reset completo dei controlli header ad ogni render (evita accumulo bottoni)
+    const controls = document.getElementById("header-controls");
+    controls.innerHTML = '<button class="switch-btn" onclick="nextView()">Cambia vista →</button>';
+
+    if (chartInstance) {
+      chartInstance.destroy();
+      chartInstance = null;
+    }
+
+    if (typeof Chart === "undefined" && view.key !== "heatmap") {
+      document.getElementById("chart-area").innerHTML =
+        '<div class="error">Libreria grafici non caricata. Ricarica la pagina.</div>';
+      return;
+    }
+
+    if (view.key === "monthly") renderMonthly();
+    else if (view.key === "genre") renderGenre();
+    else if (view.key === "cumulativePages") renderCumulative();
+    else if (view.key === "heatmap") renderHeatmap();
+  }
+
+  function ensureCanvas() {
+    const area = document.getElementById("chart-area");
+    area.innerHTML = '<canvas id="canvas"></canvas>';
+    return document.getElementById("canvas").getContext("2d");
+  }
+
+  function renderMonthly() {
+    if (!data.monthly || data.monthly.length === 0) {
+      document.getElementById("chart-area").innerHTML = '<div class="empty">Nessun dato disponibile</div>';
+      return;
+    }
+    const ctx = ensureCanvas();
+    const gradient = ctx.createLinearGradient(0, 0, 0, 220);
+    gradient.addColorStop(0, "#e0574a");
+    gradient.addColorStop(1, "#a5311f");
+
+    const labels = data.monthly.map((m) => formatMonth(m.month));
+    const values = data.monthly.map((m) => m.count);
+    chartInstance = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: gradient,
+          borderRadius: 6,
+          maxBarThickness: 28,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: "rgba(0,0,0,0.05)" } },
+          x: { grid: { display: false } },
+        },
+      },
+    });
+  }
+
+  function renderGenre() {
+    if (!data.genre || data.genre.length === 0) {
+      document.getElementById("chart-area").innerHTML = '<div class="empty">Nessun dato disponibile</div>';
+      return;
+    }
+    const ctx = ensureCanvas();
+    const palette = ["#c0392b","#e67e22","#2c8f6a","#2980b9","#8e44ad","#d4a017","#16a085","#7f8c8d"];
+    const total = data.genre.reduce((s, g) => s + g.count, 0);
+
+    chartInstance = new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels: data.genre.map((g) => g.name),
+        datasets: [{
+          data: data.genre.map((g) => g.count),
+          backgroundColor: palette,
+          borderWidth: 2,
+          borderColor: "#edf1f2",
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: "68%",
+        plugins: {
+          legend: { position: "right", labels: { boxWidth: 10, usePointStyle: true, font: { size: 11 } } },
+        },
+      },
+      plugins: [{
+        id: "centerText",
+        afterDraw(chart) {
+          const { ctx, chartArea } = chart;
+          ctx.save();
+          const cx = (chartArea.left + chartArea.right) / 2;
+          const cy = (chartArea.top + chartArea.bottom) / 2;
+          ctx.font = "700 20px -apple-system, sans-serif";
+          ctx.fillStyle = "#37352f";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(total, cx, cy - 6);
+          ctx.font = "500 11px -apple-system, sans-serif";
+          ctx.fillStyle = "#9b9a97";
+          ctx.fillText("elementi", cx, cy + 14);
+          ctx.restore();
+        },
+      }],
+    });
+  }
+
+  function renderCumulative() {
+    if (!data.cumulativePages || data.cumulativePages.length === 0) {
+      document.getElementById("chart-area").innerHTML = '<div class="empty">Nessun dato disponibile</div>';
+      return;
+    }
+    const ctx = ensureCanvas();
+    const gradient = ctx.createLinearGradient(0, 0, 0, 220);
+    gradient.addColorStop(0, "rgba(192,57,43,0.28)");
+    gradient.addColorStop(1, "rgba(192,57,43,0.02)");
+
+    chartInstance = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: data.cumulativePages.map((p) => p.date),
+        datasets: [{
+          data: data.cumulativePages.map((p) => p.cumulative),
+          borderColor: "#c0392b",
+          borderWidth: 2.5,
+          backgroundColor: gradient,
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: "#c0392b",
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 6 }, grid: { display: false } },
+          y: { beginAtZero: true, grid: { color: "rgba(0,0,0,0.05)" } },
+        },
+        interaction: { intersect: false, mode: "index" },
+      },
+    });
+  }
+
+  // --- Heatmap stile GitHub, con selettore anno ---
+  function renderHeatmap() {
+    const controls = document.getElementById("header-controls");
+    const yearList = document.createElement("div");
+    yearList.className = "year-list";
+    const nowYear = new Date().getFullYear();
+    for (let y = nowYear; y >= nowYear - 2; y--) {
+      const btn = document.createElement("button");
+      btn.className = "year-btn" + (y === heatmapYear ? " active" : "");
+      btn.textContent = y;
+      btn.onclick = () => selectYear(y);
+      yearList.appendChild(btn);
+    }
+    controls.appendChild(yearList);
+
+    const area = document.getElementById("chart-area");
+    const map = {};
+    (data.heatmap || []).forEach((d) => { map[d.date] = d.count; });
+
+    const year = heatmapYear;
+    const today = new Date();
+    const start = new Date(year, 0, 1);
+    // Se l'anno è quello corrente, la griglia si ferma a oggi (non fino a fine anno)
+    const end = year === today.getFullYear() ? today : new Date(year, 11, 31);
+
+    const gridStart = new Date(start);
+    gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+
+    const weeks = [];
+    let cursor = new Date(gridStart);
+    while (cursor <= end) {
+      const week = [];
+      for (let d = 0; d < 7; d++) {
+        const dateStr = cursor.toISOString().slice(0, 10);
+        const inRange = cursor.getFullYear() === year && cursor <= end;
+        week.push({ date: dateStr, count: inRange ? (map[dateStr] || 0) : null });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      weeks.push(week);
+    }
+
+    const maxCount = Math.max(1, ...Object.values(map));
+    const colorFor = (n) => {
+      if (n === null) return "transparent";
+      if (!n) return "#dfe3e4";
+      const ratio = Math.min(1, n / maxCount);
+      const alpha = 0.25 + ratio * 0.75;
+      return "rgba(192,57,43," + alpha.toFixed(2) + ")";
+    };
+
+    // Etichette mese posizionate in assoluto sopra la settimana in cui inizia il mese,
+    // saltando le etichette troppo vicine tra loro per evitare sovrapposizioni
+    const monthNames = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
+    const COL_WIDTH = 15; // 12px cella + 3px gap
+    let lastMonth = -1;
+    let lastLabelWeek = -99;
+    const monthLabels = [];
+    weeks.forEach((week, wi) => {
+      const firstValidDay = week.find((d) => d.count !== null);
+      if (!firstValidDay) return;
+      const m = new Date(firstValidDay.date).getMonth();
+      if (m !== lastMonth && wi - lastLabelWeek >= 2) {
+        monthLabels.push({ label: monthNames[m], left: wi * COL_WIDTH });
+        lastMonth = m;
+        lastLabelWeek = wi;
+      }
+    });
+
+    const monthRowHtml = monthLabels
+      .map((m) => '<span style="left:' + m.left + 'px">' + m.label + '</span>')
+      .join("");
+
+    const weeksHtml = weeks.map((week) => {
+      const cellsHtml = week.map((d) => {
+        if (d.count === null) return '<div class="cell empty-cell"></div>';
+        return '<div class="cell" title="' + d.date + ': ' + d.count + '" style="background:' + colorFor(d.count) + '"></div>';
+      }).join("");
+      return '<div class="week-col">' + cellsHtml + '</div>';
+    }).join("");
+
+    area.innerHTML =
+      '<div class="heatmap-scroll"><div class="heatmap-inner">' +
+        '<div class="month-row">' + monthRowHtml + '</div>' +
+        '<div class="heatmap-body">' +
+          '<div class="day-labels"><div></div><div>Lun</div><div></div><div>Mer</div><div></div><div>Ven</div><div></div></div>' +
+          '<div class="weeks">' + weeksHtml + '</div>' +
+        '</div>' +
+        '<div class="heatmap-legend">meno' +
+          '<div class="cell" style="background:#dfe3e4"></div>' +
+          '<div class="cell" style="background:rgba(192,57,43,0.4)"></div>' +
+          '<div class="cell" style="background:rgba(192,57,43,0.7)"></div>' +
+          '<div class="cell" style="background:rgba(192,57,43,1)"></div>' +
+        'più</div>' +
+      '</div></div>';
+  }
+
+  function formatMonth(key) {
+    const [y, m] = key.split("-");
+    const names = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
+    return names[parseInt(m, 10) - 1] + " " + y.slice(2);
+  }
+
+  load();
+</script>
+
+</body>
+</html>
