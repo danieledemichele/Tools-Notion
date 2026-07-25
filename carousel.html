@@ -70,12 +70,27 @@
     color: #37352f;
     margin: 0 0 6px 0;
     line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.5em;
   }
   .subtitle {
     font-size: 16px;
     font-weight: 700;
     color: #c0392b;
-    margin: 0 0 14px 0;
+    margin: 0 0 10px 0;
+  }
+  .description {
+    font-size: 14px;
+    color: #6b6b6b;
+    line-height: 1.5;
+    margin: 0 0 16px 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
   .cta {
     display: inline-block;
@@ -145,10 +160,21 @@
 
 <script>
   // Sostituisci con l'URL del worker "carosello" una volta creato
-  const WORKER_URL = "https://libreria-carousel.daniele-470.workers.dev";
+  const WORKER_URL = "https://SOSTITUISCI-CON-IL-TUO-WORKER-CAROUSEL.workers.dev";
 
   let items = [];
   let current = 0;
+  let autoplayTimer = null;
+  const AUTOPLAY_MS = 5000;
+
+  function startAutoplay() {
+    stopAutoplay();
+    autoplayTimer = setInterval(() => go(current + 1), AUTOPLAY_MS);
+  }
+
+  function stopAutoplay() {
+    if (autoplayTimer) clearInterval(autoplayTimer);
+  }
 
   async function load() {
     const el = document.getElementById("carousel");
@@ -162,6 +188,10 @@
       }
       items = data;
       render();
+      startAutoplay();
+
+      el.addEventListener("mouseenter", stopAutoplay);
+      el.addEventListener("mouseleave", startAutoplay);
     } catch (err) {
       el.innerHTML = '<div class="error">Errore nel caricamento: ' + err.message + "</div>";
     }
@@ -181,12 +211,17 @@
         ? '<div class="badge-text">' + escapeHtml(item.badgeText) + "</div>"
         : '<div class="fallback-icon">' + item.fallbackIcon + "</div>";
 
+      const descHtml = item.description
+        ? '<div class="description">' + escapeHtml(item.description) + "</div>"
+        : "";
+
       slide.innerHTML =
         '<div class="cover">' + coverHtml + "</div>" +
         '<div class="content">' +
           '<div class="meta">' + escapeHtml(item.meta) + "</div>" +
           '<div class="title">' + escapeHtml(item.title) + "</div>" +
           '<div class="subtitle">' + escapeHtml(item.subtitle) + "</div>" +
+          descHtml +
           '<a class="cta" href="' + item.url + '" target="_blank">APRI IN NOTION</a>' +
         "</div>";
 
@@ -219,6 +254,7 @@
   function go(index) {
     current = (index + items.length) % items.length;
     render();
+    startAutoplay(); // riavvia il timer ad ogni navigazione manuale
   }
 
   function escapeHtml(str) {
