@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riviste in abbonamento</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: transparent;
+  }
+  .wrap {
+    position: relative;
+    background: linear-gradient(180deg, #f2f4f5 0%, #e9edee 100%);
+    border-radius: 16px;
+    padding: 30px 44px;
+    min-height: 300px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 8px 24px rgba(0,0,0,0.04);
+  }
+  .slide { display: none; animation: fadeIn 0.35s ease; }
+  .slide.active { display: block; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+  }
+  .title-block h2 {
+    margin: 0 0 4px 0;
+    font-size: 27px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: #2c2a26;
+  }
+  .title-block .genere {
+    font-size: 13px;
+    color: #9b9a97;
+    font-weight: 500;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 13px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .badge.attivo { background: #e2f5ec; color: #16855f; }
+  .badge.attivo::before { background: #1e9e6f; }
+  .badge.scaduto { background: #fbe6e3; color: #a5311f; }
+  .badge.scaduto::before { background: #c0392b; }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .info-item {
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    padding: 8px 0;
+    font-size: 13px;
+  }
+  .info-item:last-child { border-bottom: none; }
+  .info-item .label { color: #9b9a97; font-weight: 500; }
+  .info-item .value { color: #2c2a26; font-weight: 600; text-align: right; }
+  .info-item .value a { color: #c0392b; text-decoration: none; }
+  .info-item .value a:hover { text-decoration: underline; }
+
+  .highlight-row {
+    display: flex;
+    gap: 14px;
+    margin-top: 20px;
+  }
+  .highlight-card {
+    flex: 1;
+    background: #fff;
+    border-radius: 12px;
+    padding: 15px 18px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    border: 1px solid rgba(0,0,0,0.03);
+  }
+  .highlight-card .label {
+    font-size: 10.5px;
+    color: #9b9a97;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+  }
+  .highlight-card .value {
+    font-size: 21px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #e0574a, #a5311f);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-top: 5px;
+  }
+
+  .arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #fff;
+    border: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    color: #37352f;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  }
+  .arrow:hover { background: #f7f6f3; }
+  .arrow.prev { left: 10px; }
+  .arrow.next { right: 10px; }
+
+  .dots {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 22px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #37352f; opacity: 0.25; cursor: pointer; transition: opacity 0.2s, transform 0.2s; }
+  .dot.active { opacity: 1; background: #c0392b; transform: scale(1.2); }
+
+  .error, .empty { text-align: center; color: #6b6b6b; font-size: 13px; padding: 60px 0; }
+
+  @media (max-width: 560px) {
+    .highlight-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap" id="dashboard">
+  <div class="empty">Caricamento…</div>
+</div>
+
+<script>
+  const WORKER_URL = "https://SOSTITUISCI-CON-IL-TUO-WORKER-RIVISTE.workers.dev";
+  const AUTOPLAY_MS = 6000;
+
+  let items = [];
+  let current = 0;
+  let autoplayTimer = null;
+
+  async function load() {
+    const el = document.getElementById("dashboard");
+    try {
+      const res = await fetch(WORKER_URL);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (!Array.isArray(data) || data.length === 0) {
+        el.innerHTML = '<div class="empty">Nessuna rivista trovata</div>';
+        return;
+      }
+      items = data;
+      render();
+      startAutoplay();
+
+      el.addEventListener("mouseenter", stopAutoplay);
+      el.addEventListener("mouseleave", startAutoplay);
+    } catch (err) {
+      el.innerHTML = '<div class="error">Errore nel caricamento: ' + err.message + "</div>";
+    }
+  }
+
+  function startAutoplay() {
+    if (items.length <= 1) return;
+    stopAutoplay();
+    autoplayTimer = setInterval(() => go(current + 1), AUTOPLAY_MS);
+  }
+
+  function stopAutoplay() {
+    if (autoplayTimer) {
+      clearInterval(autoplayTimer);
+      autoplayTimer = null;
+    }
+  }
+
+  function render() {
+    const el = document.getElementById("dashboard");
+    el.innerHTML = "";
+
+    items.forEach((item, i) => {
+      const slide = document.createElement("div");
+      slide.className = "slide" + (i === current ? " active" : "");
+
+      const badgeClass = item.statoAbbonamento === "Attivo" ? "attivo" : "scaduto";
+
+      slide.innerHTML =
+        '<div class="top-row">' +
+          '<div class="title-block">' +
+            '<h2>' + esc(item.nome) + '</h2>' +
+            '<div class="genere">' + esc(item.genere) + '</div>' +
+          '</div>' +
+          '<span class="badge ' + badgeClass + '">' + esc(item.statoAbbonamento || "—") + '</span>' +
+        '</div>' +
+
+        '<div class="highlight-row">' +
+          '<div class="highlight-card"><div class="label">Numero attuale</div><div class="value">N. ' + (item.numeroCorrente ?? "—") + '</div></div>' +
+          '<div class="highlight-card"><div class="label">Prossima uscita</div><div class="value">' + formatDate(item.prossimaUscita) + '</div></div>' +
+          '<div class="highlight-card"><div class="label">Scadenza abbonamento</div><div class="value">' + formatDate(item.scadenzaAbbonamento) + '</div></div>' +
+        '</div>' +
+
+        '<div class="info-grid" style="margin-top:20px">' +
+          infoItem("Direttore", item.direttore) +
+          infoItem("Editore", item.editore) +
+          infoItem("Fondazione", formatDate(item.fondazione)) +
+          infoItem("Periodicità", item.periodicita) +
+          infoItem("Lingua", item.lingua) +
+          infoItem("ISSN cartaceo", item.issnCartaceo) +
+          infoItem("ISSN digitale", item.issnDigitale) +
+          infoItem("Sito web", item.sitoWeb ? '<a href="' + item.sitoWeb + '" target="_blank">' + item.sitoWeb.replace(/^https?:\/\//, "") + '</a>' : "—") +
+        '</div>';
+
+      el.appendChild(slide);
+    });
+
+    if (items.length > 1) {
+      const prevBtn = document.createElement("button");
+      prevBtn.className = "arrow prev";
+      prevBtn.textContent = "‹";
+      prevBtn.onclick = () => { go(current - 1); startAutoplay(); };
+      el.appendChild(prevBtn);
+
+      const nextBtn = document.createElement("button");
+      nextBtn.className = "arrow next";
+      nextBtn.textContent = "›";
+      nextBtn.onclick = () => { go(current + 1); startAutoplay(); };
+      el.appendChild(nextBtn);
+
+      const dots = document.createElement("div");
+      dots.className = "dots";
+      items.forEach((_, i) => {
+        const dot = document.createElement("div");
+        dot.className = "dot" + (i === current ? " active" : "");
+        dot.onclick = () => { go(i); startAutoplay(); };
+        dots.appendChild(dot);
+      });
+      el.appendChild(dots);
+    }
+  }
+
+  function infoItem(label, value) {
+    return '<div class="info-item"><span class="label">' + label + '</span><span class="value">' + (value || "—") + '</span></div>';
+  }
+
+  function go(index) {
+    current = (index + items.length) % items.length;
+    render();
+  }
+
+  function formatDate(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" });
+  }
+
+  function esc(str) {
+    const div = document.createElement("div");
+    div.textContent = str ?? "";
+    return div.innerHTML;
+  }
+
+  load();
+</script>
+
+</body>
+</html>
