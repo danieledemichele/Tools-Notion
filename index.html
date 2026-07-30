@@ -33,6 +33,30 @@
     font-weight: 600;
     color: #37352f;
   }
+  .goal-value {
+    font-size: 24px;
+    font-weight: 600;
+    color: #37352f;
+    margin-bottom: 8px;
+  }
+  .progress-track {
+    width: 100%;
+    height: 6px;
+    background: rgba(0,0,0,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #e0574a, #a5311f);
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+  .progress-percent {
+    font-size: 11px;
+    color: #9b9a97;
+    margin-top: 4px;
+  }
   .updated {
     font-size: 11px;
     color: #9b9a97;
@@ -51,17 +75,22 @@
 <body>
 
 <div class="grid" id="cards">
-  <div class="card"><div class="label">Libri letti</div><div class="value">…</div></div>
-  <div class="card"><div class="label">Pagine anno</div><div class="value">…</div></div>
-  <div class="card"><div class="label">Articoli</div><div class="value">…</div></div>
-  <div class="card"><div class="label">Voto medio</div><div class="value">…</div></div>
+  <div class="card"><div class="label">Libri letti (anno)</div><div class="value" data-field="libriLetti">…</div></div>
+  <div class="card"><div class="label">Pagine anno</div><div class="value" data-field="pagineAnno">…</div></div>
+  <div class="card"><div class="label">Articoli</div><div class="value" data-field="articoliTotali">…</div></div>
+  <div class="card">
+    <div class="label">Obiettivo lettura</div>
+    <div class="goal-value" data-field="goalLabel">…</div>
+    <div class="progress-track"><div class="progress-fill" data-field="goalBar" style="width:0%"></div></div>
+    <div class="progress-percent" data-field="goalPercent"></div>
+  </div>
 </div>
 <div class="updated" id="updated"></div>
 
 <script>
   // Sostituisci con l'URL del tuo worker Cloudflare una volta creato
   // (es: https://libreria-stats.tuonome.workers.dev)
-  const WORKER_URL = "https://libreria-stats.daniele-470.workers.dev";
+  const WORKER_URL = "https://SOSTITUISCI-CON-IL-TUO-WORKER.workers.dev";
 
   async function loadStats() {
     try {
@@ -70,11 +99,12 @@
 
       if (data.error) throw new Error(data.error);
 
-      const cards = document.querySelectorAll("#cards .card .value");
-      cards[0].textContent = data.libriLetti;
-      cards[1].textContent = data.pagineAnno.toLocaleString("it-IT");
-      cards[2].textContent = data.articoliTotali;
-      cards[3].textContent = data.votoMedio + " / 5";
+      setField("libriLetti", data.libriLetti);
+      setField("pagineAnno", data.pagineAnno.toLocaleString("it-IT"));
+      setField("articoliTotali", data.articoliTotali);
+      setField("goalLabel", data.goalProgress + " / " + data.goalTarget + " libri");
+      setField("goalPercent", data.goalPercent + "%");
+      document.querySelector('[data-field="goalBar"]').style.width = data.goalPercent + "%";
 
       const updatedEl = document.getElementById("updated");
       const d = new Date(data.aggiornato);
@@ -83,6 +113,11 @@
       document.getElementById("cards").innerHTML =
         '<div class="error">Errore nel caricamento: ' + err.message + "</div>";
     }
+  }
+
+  function setField(name, value) {
+    const el = document.querySelector('[data-field="' + name + '"]');
+    if (el) el.textContent = value;
   }
 
   loadStats();
