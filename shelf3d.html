@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>La mia libreria in 3D</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: #1a1815;
+    overflow: hidden;
+  }
+  #scene-container { width: 100%; height: 100vh; }
+  #overlay {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    color: #f3f1ee;
+  }
+  #overlay h1 { font-size: 16px; margin: 0 0 2px 0; font-weight: 700; }
+  #overlay p { font-size: 12px; margin: 0; opacity: 0.6; }
+  #tooltip {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.75);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    text-align: center;
+    display: none;
+    max-width: 80%;
+  }
+  #tooltip .title { font-weight: 700; }
+  #tooltip .subtitle { opacity: 0.7; font-size: 11px; margin-top: 2px; }
+  #loading, #empty, #error {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #9b9a97;
+    font-size: 13px;
+    text-align: center;
+  }
+  #error { color: #e0574a; }
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <h1>📚 Letture dell'anno</h1>
+  <p>Trascina per ruotare · scorri per zoomare</p>
+</div>
+<div id="tooltip"></div>
+<div id="loading">Caricamento scaffale…</div>
+<div id="scene-container"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+  import * as THREE from "three";
+  import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+  const WORKER_URL = "https://worker-shelf3d.daniele-470.workers.dev";
+
+  const container = document.getElementById("scene-container");
+  const tooltip = document.getElementById("tooltip");
+  const loadingEl = document.getElementById("loading");
+
+  // --- Setup base della scena ---
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1a1815);
+  scene.fog = new THREE.Fog(0x1a1815, 8, 22);
+
+  const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera.position.set(0, 1.6, 6);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance = 2;
+  controls.maxDistance = 14;
+  controls.maxPolarAngle = Math.PI / 2.1;
+  controls.target.set(0, 1, 0);
+
+  // --- Luci ---
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const keyLight = new THREE.DirectionalLight(0xfff2e0, 1.1);
+  keyLight.position.set(3, 6, 4);
+  scene.add(keyLight);
+  const rimLight = new THREE.DirectionalLight(0x8899ff, 0.35);
+  rimLight.position.set(-4, 3, -3);
+  scene.add(rimLight);
+
+  // --- Scaffale (semplice piano) ---
+  const shelfGeo = new THREE.BoxGeometry(30, 0.15, 1.2);
+  const shelfMat = new THREE.MeshStandardMaterial({ color: 0x3a2f22, roughness: 0.8 });
+  const shelf = new THREE.Mesh(shelfGeo, shelfMat);
+  shelf.position.set(0, 0, 0);
+  scene.add(shelf);
+
+  // --- Raycaster per hover/click sui libri ---
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  const books = []; // { mesh, title, subtitle }
+
+  function onPointerMove(event) {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  }
+  window.addEventListener("pointermove", onPointerMove);
+
+  function checkHover() {
+    raycaster.setFromCamera(mouse, camera);
+    const meshes = books.map((b) => b.mesh);
+    const hits = raycaster.intersectObjects(meshes);
+    if (hits.length > 0) {
+      const hit = books.find((b) => b.mesh === hits[0].object);
+      tooltip.style.display = "block";
+      tooltip.innerHTML =
+        '<div class="title">' + escapeHtml(hit.title) + '</div>' +
+        '<div class="subtitle">' + escapeHtml(hit.subtitle) + '</div>';
+      hit.mesh.position.y = 0.15;
+    } else {
+      tooltip.style.display = "none";
+    }
+    books.forEach((b) => {
+      if (!hits.length || hits[0].object !== b.mesh) b.mesh.position.y = 0;
+    });
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str ?? "";
+    return div.innerHTML;
+  }
+
+  // --- Caricamento dati e costruzione dei libri ---
+  async function load() {
+    try {
+      const res = await fetch(WORKER_URL);
+      const items = await res.json();
+      if (items.error) throw new Error(items.error);
+
+      loadingEl.style.display = "none";
+
+      if (!items.length) {
+        document.getElementById("empty") || showMessage("empty", "Nessuna lettura completata quest'anno, per ora.");
+        return;
+      }
+
+      const spacing = 0.55;
+      const startX = -((items.length - 1) * spacing) / 2;
+
+      const loader = new THREE.TextureLoader();
+      loader.crossOrigin = "anonymous";
+
+      items.forEach((item, i) => {
+        const proxiedUrl = WORKER_URL.replace(/\/$/, "") + "/image?url=" + encodeURIComponent(item.coverUrl);
+
+        loader.load(
+          proxiedUrl,
+          (texture) => {
+            texture.colorSpace = THREE.SRGBColorSpace;
+            const bookGeo = new THREE.BoxGeometry(0.42, 1.3, 0.35);
+            const sideMat = new THREE.MeshStandardMaterial({ color: 0xe8e4da, roughness: 0.9 });
+            const coverMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.6 });
+            // Ordine facce BoxGeometry: +x -x +y -y +z -z. La copertina va sulla faccia +z (fronte)
+            const materials = [sideMat, sideMat, sideMat, sideMat, coverMat, sideMat];
+            const mesh = new THREE.Mesh(bookGeo, materials);
+            mesh.position.set(startX + i * spacing, 0.65 + 0.075, 0.3);
+            scene.add(mesh);
+            books.push({ mesh, title: item.title, subtitle: item.subtitle });
+          },
+          undefined,
+          () => {
+            // Fallback se la texture non carica: box colorato con titolo come tooltip comunque disponibile
+            const bookGeo = new THREE.BoxGeometry(0.42, 1.3, 0.35);
+            const fallbackMat = new THREE.MeshStandardMaterial({ color: 0xa5311f, roughness: 0.8 });
+            const mesh = new THREE.Mesh(bookGeo, fallbackMat);
+            mesh.position.set(startX + i * spacing, 0.65 + 0.075, 0.3);
+            scene.add(mesh);
+            books.push({ mesh, title: item.title, subtitle: item.subtitle });
+          }
+        );
+      });
+    } catch (err) {
+      loadingEl.style.display = "none";
+      showMessage("error", "Errore nel caricamento: " + err.message);
+    }
+  }
+
+  function showMessage(id, text) {
+    const el = document.createElement("div");
+    el.id = id;
+    el.textContent = text;
+    el.style.position = "absolute";
+    el.style.top = "50%";
+    el.style.left = "50%";
+    el.style.transform = "translate(-50%, -50%)";
+    el.style.color = id === "error" ? "#e0574a" : "#9b9a97";
+    el.style.fontSize = "13px";
+    document.body.appendChild(el);
+  }
+
+  // --- Loop di rendering ---
+  function animate() {
+    requestAnimationFrame(animate);
+    checkHover();
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // --- Resize ---
+  window.addEventListener("resize", () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  load();
+</script>
+
+</body>
+</html>
