@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>Scontrini · Finanze 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6f2e9;
+    --paper-edge: #e8e1d0;
+    --ink: #2a2620;
+    --ink-soft: #6b6255;
+    --rule: #cfc6b2;
+    --stamp-green: #37543f;
+    --stamp-green-soft: #4f7058;
+    --stamp-red: #a8402f;
+    --shadow: rgba(42, 38, 32, 0.18);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: #ded6c3;
+    background-image:
+      radial-gradient(circle at 20% 20%, rgba(255,255,255,0.4), transparent 60%),
+      radial-gradient(circle at 80% 80%, rgba(0,0,0,0.05), transparent 60%);
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--ink);
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px 80px;
+  }
+
+  .receipt {
+    width: 100%;
+    max-width: 420px;
+  }
+
+  .ticket {
+    background: var(--paper);
+    box-shadow: 0 18px 40px var(--shadow), 0 2px 0 var(--paper-edge);
+    padding: 28px 26px 20px;
+    position: relative;
+  }
+
+  .ticket::before {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -11px;
+    height: 22px;
+    background:
+      linear-gradient(-45deg, var(--paper) 8px, transparent 0),
+      linear-gradient(45deg, var(--paper) 8px, transparent 0);
+    background-position: bottom left;
+    background-size: 16px 22px;
+    background-repeat: repeat-x;
+  }
+
+  header {
+    text-align: center;
+    border-bottom: 1px dashed var(--rule);
+    padding-bottom: 16px;
+    margin-bottom: 18px;
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+  }
+
+  h1 {
+    font-size: 20px;
+    letter-spacing: 0.03em;
+    margin: 6px 0 2px;
+    font-weight: 700;
+  }
+
+  .subtitle {
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+
+  .trigger {
+    width: 100%;
+    padding: 16px;
+    background: var(--stamp-green);
+    color: var(--paper);
+    border: none;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    position: relative;
+    box-shadow: 0 4px 0 #223229;
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+  }
+
+  .trigger:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 #223229;
+  }
+
+  .trigger:disabled {
+    background: var(--ink-soft);
+    box-shadow: 0 4px 0 #4d473c;
+    cursor: default;
+    transform: none;
+  }
+
+  .trigger .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--paper);
+    margin-right: 8px;
+    vertical-align: middle;
+    animation: none;
+  }
+
+  .trigger.loading .dot {
+    animation: blink 1s infinite ease-in-out;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 1; }
+  }
+
+  .log {
+    margin-top: 20px;
+    font-size: 12px;
+  }
+
+  .empty-state {
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 12px;
+    padding: 18px 0 4px;
+    line-height: 1.6;
+  }
+
+  .run-summary {
+    text-align: center;
+    font-size: 11px;
+    color: var(--ink-soft);
+    margin: 14px 0 10px;
+    letter-spacing: 0.05em;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 18px;
+  }
+
+  .stat {
+    text-align: center;
+    padding: 10px 4px;
+    border: 1px solid var(--rule);
+  }
+
+  .stat .stat-number {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .stat .stat-label {
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-top: 5px;
+  }
+
+  .stat.presenti .stat-number { color: var(--ink); }
+  .stat.processati .stat-number { color: var(--stamp-green-soft); }
+  .stat.rimbalzati .stat-number { color: var(--stamp-red); }
+  .stat.rimbalzati.zero .stat-number { color: var(--ink-soft); }
+
+  .item {
+    border-top: 1px dashed var(--rule);
+    padding: 10px 0;
+    animation: print-in 0.35s ease both;
+  }
+
+  @keyframes print-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  .item-row .amount {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .item-meta {
+    color: var(--ink-soft);
+    font-size: 11px;
+    margin-top: 3px;
+  }
+
+  .item-status {
+    font-size: 11px;
+    margin-top: 5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .item-status.ok { color: var(--stamp-green-soft); }
+  .item-status.error { color: var(--stamp-red); }
+
+  .item-status .mark {
+    font-weight: 700;
+  }
+
+  .error-detail {
+    font-size: 10.5px;
+    color: var(--stamp-red);
+    margin-top: 3px;
+    word-break: break-word;
+    opacity: 0.85;
+  }
+
+  .barcode {
+    margin-top: 20px;
+    height: 34px;
+    background: repeating-linear-gradient(
+      90deg, var(--ink) 0px, var(--ink) 2px, transparent 2px, transparent 4px,
+      var(--ink) 4px, var(--ink) 5px, transparent 5px, transparent 9px
+    );
+    opacity: 0.8;
+  }
+
+  .config {
+    font-size: 11px;
+    text-align: center;
+    color: var(--ink-soft);
+    margin-top: 14px;
+  }
+
+  .config a {
+    color: var(--stamp-green-soft);
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  .config-panel {
+    display: none;
+    margin-top: 10px;
+    gap: 8px;
+    flex-direction: column;
+  }
+
+  .config-panel.open { display: flex; }
+
+  .config-panel input {
+    font-family: inherit;
+    font-size: 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--rule);
+    background: #fff;
+    color: var(--ink);
+  }
+
+  .config-panel button {
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 8px;
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    cursor: pointer;
+  }
+
+  footer.hint {
+    text-align: center;
+    font-size: 11px;
+    color: #746b5c;
+    margin-top: 18px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="receipt">
+  <div class="ticket">
+    <header>
+      <div class="eyebrow">Finanze 2026 · Daniele</div>
+      <h1>Scontrini Tracker</h1>
+      <div class="subtitle">Dropbox → Notion, in un tap</div>
+    </header>
+
+    <button class="trigger" id="triggerBtn">
+      <span class="dot"></span><span id="triggerLabel">Elabora scontrini</span>
+    </button>
+
+    <div class="log" id="log">
+      <div class="empty-state" id="emptyState">
+        Nessuna elaborazione ancora avviata.<br>
+        Carica gli scontrini su Dropbox, poi premi il bottone.
+      </div>
+    </div>
+
+    <div class="barcode"></div>
+
+    <div class="config">
+      <a id="configToggle">Configura connessione</a>
+      <div class="config-panel" id="configPanel">
+        <input type="password" id="secretInput" placeholder="Trigger secret" autocomplete="off">
+        <button id="saveSecret">Salva su questo dispositivo</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="hint">Se un file va in errore, resta nella cartella Dropbox e ci riprova al prossimo giro.</footer>
+</div>
+
+<script>
+  // ── CONFIGURAZIONE ──────────────────────────────────────────────
+  // L'URL del Worker non è sensibile, resta pure nel codice.
+  // Il TRIGGER_SECRET invece NON va scritto qui: lo inserisci dalla pagina
+  // stessa (pulsante "Configura connessione"), viene salvato solo nel
+  // localStorage del tuo browser e non finisce mai nel repository.
+  const WORKER_URL = "https://scontrini-tracker.daniele-470.workers.dev/";
+  const SECRET_STORAGE_KEY = "scontrini_trigger_secret";
+  // ─────────────────────────────────────────────────────────────────
+
+  const btn = document.getElementById('triggerBtn');
+  const label = document.getElementById('triggerLabel');
+  const log = document.getElementById('log');
+  const emptyState = document.getElementById('emptyState');
+  const configToggle = document.getElementById('configToggle');
+  const configPanel = document.getElementById('configPanel');
+  const secretInput = document.getElementById('secretInput');
+  const saveSecretBtn = document.getElementById('saveSecret');
+
+  function getSecret() {
+    return localStorage.getItem(SECRET_STORAGE_KEY) || "";
+  }
+
+  configToggle.addEventListener('click', () => {
+    configPanel.classList.toggle('open');
+    secretInput.value = getSecret();
+  });
+
+  saveSecretBtn.addEventListener('click', () => {
+    localStorage.setItem(SECRET_STORAGE_KEY, secretInput.value.trim());
+    configPanel.classList.remove('open');
+    configToggle.textContent = 'Configura connessione (salvato ✓)';
+    setTimeout(() => (configToggle.textContent = 'Configura connessione'), 1800);
+  });
+
+  // Se non è ancora stato configurato, apri subito il pannello alla prima visita.
+  if (!getSecret()) {
+    configPanel.classList.add('open');
+  }
+
+  function eur(n) {
+    return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(n);
+  }
+
+  function formatDate(iso) {
+    if (!iso) return '';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+  }
+
+  function renderItem(r, index) {
+    const el = document.createElement('div');
+    el.className = 'item';
+    el.style.animationDelay = `${index * 90}ms`;
+
+    if (r.status === 'ok') {
+      const importo = r.extracted?.importo ?? 0;
+      const nome = r.extracted?.supermercato ?? r.file;
+      const data = formatDate(r.extracted?.data);
+      const budgetOk = r.budgetPageId && r.budgetPageId !== 'non trovato';
+      el.innerHTML = `
+        <div class="item-row">
+          <span>${nome}</span>
+          <span class="amount">-${eur(importo).replace('€','').trim()} €</span>
+        </div>
+        <div class="item-meta">${data} · ${r.person}</div>
+        <div class="item-status ok"><span class="mark">✓</span> Salvato in Uscite${budgetOk ? '' : ' · mese non collegato'}</div>
+      `;
+    } else {
+      el.innerHTML = `
+        <div class="item-row">
+          <span>${r.file}</span>
+          <span></span>
+        </div>
+        <div class="item-meta">${r.person}</div>
+        <div class="item-status error"><span class="mark">✗</span> Non elaborato</div>
+        <div class="error-detail">${(r.error || 'Errore sconosciuto').slice(0, 160)}</div>
+      `;
+    }
+    return el;
+  }
+
+  async function runScan() {
+    const secret = getSecret();
+    if (!secret) {
+      configPanel.classList.add('open');
+      secretInput.focus();
+      return;
+    }
+
+    btn.disabled = true;
+    btn.classList.add('loading');
+    label.textContent = 'Elaborazione in corso…';
+
+    try {
+      const url = `${WORKER_URL}${WORKER_URL.includes('?') ? '&' : '?'}secret=${encodeURIComponent(secret)}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      log.innerHTML = '';
+
+      if (!data.ok) {
+        const el = document.createElement('div');
+        el.className = 'item';
+        el.innerHTML = `
+          <div class="item-status error"><span class="mark">✗</span> Elaborazione fallita</div>
+          <div class="error-detail">${(data.error || 'Errore sconosciuto').slice(0, 200)}</div>
+        `;
+        log.appendChild(el);
+        return;
+      }
+
+      if (!data.results || data.results.length === 0) {
+        const el = document.createElement('div');
+        el.className = 'empty-state';
+        el.textContent = 'Nessuno scontrino nuovo trovato su Dropbox.';
+        log.appendChild(el);
+        return;
+      }
+
+      const summary = document.createElement('div');
+      summary.className = 'stats';
+      const okCount = data.results.filter(r => r.status === 'ok').length;
+      const errorCount = data.results.filter(r => r.status === 'error').length;
+      const total = data.results.length;
+      summary.innerHTML = `
+        <div class="stat presenti">
+          <div class="stat-number">${total}</div>
+          <div class="stat-label">Presenti</div>
+        </div>
+        <div class="stat processati">
+          <div class="stat-number">${okCount}</div>
+          <div class="stat-label">Processati</div>
+        </div>
+        <div class="stat rimbalzati ${errorCount === 0 ? 'zero' : ''}">
+          <div class="stat-number">${errorCount}</div>
+          <div class="stat-label">Rimbalzati</div>
+        </div>
+      `;
+      log.appendChild(summary);
+
+      data.results.forEach((r, i) => log.appendChild(renderItem(r, i)));
+    } catch (err) {
+      log.innerHTML = '';
+      const el = document.createElement('div');
+      el.className = 'item';
+      el.innerHTML = `
+        <div class="item-status error"><span class="mark">✗</span> Impossibile contattare il Worker</div>
+        <div class="error-detail">${String(err.message || err)}</div>
+      `;
+      log.appendChild(el);
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('loading');
+      label.textContent = 'Elabora scontrini';
+    }
+  }
+
+  btn.addEventListener('click', runScan);
+</script>
+
+</body>
+</html>
