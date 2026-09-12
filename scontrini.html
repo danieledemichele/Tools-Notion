@@ -400,7 +400,7 @@
   // Il TRIGGER_SECRET invece NON va scritto qui: lo inserisci dalla pagina
   // stessa (pulsante "Configura connessione"), viene salvato solo nel
   // localStorage del tuo browser e non finisce mai nel repository.
-  const WORKER_URL = "https://scontrini-tracker.daniele-470.workers.dev/";
+  const WORKER_URL = "https://scontrini-tracker.TUOACCOUNT.workers.dev/";
   const SECRET_STORAGE_KEY = "scontrini_trigger_secret";
   // ─────────────────────────────────────────────────────────────────
 
@@ -599,7 +599,7 @@
     try {
       const url = `${WORKER_URL}${WORKER_URL.includes('?') ? '&' : '?'}secret=${encodeURIComponent(secret)}`;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s: il Worker si ferma da solo prima di questo
+      const timeoutId = setTimeout(() => controller.abort(), 70000); // 70s: il Worker si ferma da solo entro ~35-45s
       let res;
       try {
         res = await fetch(url, { signal: controller.signal });
