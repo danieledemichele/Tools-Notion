@@ -385,6 +385,7 @@
     <div class="config">
       <a id="configToggle">Configura connessione</a>
       <div class="config-panel" id="configPanel">
+        <input type="text" id="workerUrlInput" placeholder="URL del Worker (es. https://scontrini-tracker.tuoaccount.workers.dev/)" autocomplete="off">
         <input type="password" id="secretInput" placeholder="Trigger secret" autocomplete="off">
         <button id="saveSecret">Salva su questo dispositivo</button>
       </div>
@@ -396,11 +397,11 @@
 
 <script>
   // ── CONFIGURAZIONE ──────────────────────────────────────────────
-  // L'URL del Worker non è sensibile, resta pure nel codice.
-  // Il TRIGGER_SECRET invece NON va scritto qui: lo inserisci dalla pagina
-  // stessa (pulsante "Configura connessione"), viene salvato solo nel
-  // localStorage del tuo browser e non finisce mai nel repository.
-  const WORKER_URL = "https://scontrini-tracker.TUOACCOUNT.workers.dev/";
+  // Sia l'URL del Worker che il secret si inseriscono dalla pagina stessa
+  // (pulsante "Configura connessione") e restano salvati solo nel
+  // localStorage del tuo browser — non finiscono mai nel repository, e non
+  // vanno più modificati a mano nel codice ad ogni nuova versione del file.
+  const WORKER_URL_STORAGE_KEY = "https://scontrini-tracker.daniele-470.workers.dev/";
   const SECRET_STORAGE_KEY = "scontrini_trigger_secret";
   // ─────────────────────────────────────────────────────────────────
 
@@ -411,6 +412,7 @@
   const emptyState = document.getElementById('emptyState');
   const configToggle = document.getElementById('configToggle');
   const configPanel = document.getElementById('configPanel');
+  const workerUrlInput = document.getElementById('workerUrlInput');
   const secretInput = document.getElementById('secretInput');
   const saveSecretBtn = document.getElementById('saveSecret');
 
@@ -418,12 +420,18 @@
     return localStorage.getItem(SECRET_STORAGE_KEY) || "";
   }
 
+  function getWorkerUrl() {
+    return localStorage.getItem(WORKER_URL_STORAGE_KEY) || "";
+  }
+
   configToggle.addEventListener('click', () => {
     configPanel.classList.toggle('open');
+    workerUrlInput.value = getWorkerUrl();
     secretInput.value = getSecret();
   });
 
   saveSecretBtn.addEventListener('click', () => {
+    localStorage.setItem(WORKER_URL_STORAGE_KEY, workerUrlInput.value.trim());
     localStorage.setItem(SECRET_STORAGE_KEY, secretInput.value.trim());
     configPanel.classList.remove('open');
     configToggle.textContent = 'Configura connessione (salvato ✓)';
@@ -431,7 +439,7 @@
   });
 
   // Se non è ancora stato configurato, apri subito il pannello alla prima visita.
-  if (!getSecret()) {
+  if (!getSecret() || !getWorkerUrl()) {
     configPanel.classList.add('open');
   }
 
@@ -585,9 +593,10 @@
 
   async function runScan() {
     const secret = getSecret();
-    if (!secret) {
+    const workerUrl = getWorkerUrl();
+    if (!secret || !workerUrl) {
       configPanel.classList.add('open');
-      secretInput.focus();
+      (workerUrl ? secretInput : workerUrlInput).focus();
       return;
     }
 
@@ -597,7 +606,7 @@
     startElapsedTimer();
 
     try {
-      const url = `${WORKER_URL}${WORKER_URL.includes('?') ? '&' : '?'}secret=${encodeURIComponent(secret)}`;
+      const url = `${workerUrl}${workerUrl.includes('?') ? '&' : '?'}secret=${encodeURIComponent(secret)}`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 70000); // 70s: il Worker si ferma da solo entro ~35-45s
       let res;
